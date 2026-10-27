@@ -1,4 +1,5 @@
 # Navan travel transactions and invoices
+[![ci](https://github.com/saisubham/navan/actions/workflows/ci.yml/badge.svg)](https://github.com/saisubham/navan/actions/workflows/ci.yml)
 
 Spring Boot 4 / Java 25 / MySQL 26.10.0. One create API for flight, hotel, rail and Navan-fee
 transactions, duplicate-safe on `external_id`, frozen invoice snapshots, paginated lists.

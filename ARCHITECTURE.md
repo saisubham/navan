@@ -6,7 +6,7 @@ constraints that make this correct are visible in the SQL.
 ```
 web/          HTTP only: controllers, exception -> status mapping
 transaction/  TransactionService (use cases, DB transactions) -> TransactionRepository (SQL)
-              TransactionValidator, TransactionMetadata (sealed record per type), MetadataCodec
+              TransactionRequest (Bean Validation on the body), TransactionType, TransactionMetadata (sealed record per type), MetadataCodec
 invoice/      InvoiceService (use cases) -> InvoiceRepository (SQL)
               InvoiceSnapshotBuilder (pure: copy, currency check, totals, rollups)
 common/       Money, Pagination, exceptions
@@ -25,6 +25,17 @@ unique-index lock of the first; when the first commits the second fails with `Du
 transaction rolls back (no orphan child rows), and the service answers **409 with the winner's id**. There is no
 in-memory map and no lock service. `ConcurrencyIT` fires 8 simultaneous POSTs, three rounds, and asserts one
 201, seven 409s that all name the same id, and one row.
+
+## Request validation
+
+Request bodies are validated declaratively. `TransactionRequest.Create` / `Patch` carry Bean Validation
+constraints (`@NotBlank`, `@Size`, `@Pattern`, `@PositiveOrZero`, `@Valid` on the lines) and the controller takes
+`@Valid @RequestBody`. `TaxLine` and `FeeLine` are both the request and the stored shape, so their rules live in
+one place. `type` is a `TransactionType` enum and `occurred_at` an `Instant`, so an unknown type or a bad
+timestamp is rejected by Jackson. Failures become a 400 `validation_error` naming the fields, e.g.
+`tax_lines[0].name must not be blank; total must be greater than or equal to 0`. PATCH uses the same
+constraints on whichever fields are supplied. Only the type-dependent `metadata` needs code (`MetadataCodec`),
+and money is rounded to scale 2 in the records' compact constructors.
 
 ## Money
 
@@ -49,7 +60,7 @@ are JSON, because they are written once and read back whole (the brief explicitl
 
 `TransactionMetadata` is a sealed interface with one record per type (`Flight`, `Hotel`, `Rail`, `NavanFee`).
 `type` is a sibling of `metadata` in the request, so there is no type tag inside metadata: `MetadataCodec` does
-a plain `switch` on the transaction's `type` and binds `metadata` to that record with Jackson. Validation is
+a lookup on the transaction's `type` (the `TransactionType` enum maps each type to its record) and binds `metadata` to that record with Jackson. Validation is
 declarative (Bean Validation: `@NotBlank`, `@NotEmpty`, `@Valid`, `@PositiveOrZero`) and every failure is a 400
 naming the field, e.g. `metadata.coupons[0].flight_number must not be blank`. An unknown `type` or `fee_kind`
 is a 400. Records give typed `Instant` / `LocalDate` / `BigDecimal` (scaled to 2 in the compact constructor) and

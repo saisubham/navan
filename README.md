@@ -26,6 +26,15 @@ this project, run `docker compose down -v` once so the current schema is created
 Needs Docker running: the integration tests start a real `mysql:26.10.0` through Testcontainers and
 call the real HTTP API on a random port (39 tests: transactions, invoices, concurrency, schema, pagination).
 
+## Requirements and caveats
+
+- **Docker is required**, both to run the app (`docker compose`) and for the tests (Testcontainers starts MySQL).
+  There is no embedded-database fallback.
+- **Recent versions**: Java 25, Spring Boot 4.1.2 and the `mysql:26.10.0` image (pinned in `docker-compose.yml` and in
+  the tests). Use a JDK 25 for `./mvnw` outside Docker; the Docker build brings its own.
+- **Credentials** (`navan` / `root` defaults) are local development placeholders only; override them with a
+  gitignored `.env`.
+
 ## CI / image
 
 `.github/workflows/ci.yml` runs `./mvnw verify` on every push and PR, and on pushes to `main` / `v*` tags
@@ -49,6 +58,10 @@ docker run --rm -p 8080:8080 -e SPRING_DATASOURCE_URL=jdbc:mysql://host:3306/nav
 | Errors | `{"error": "<code>", "message": "..."}` with 400 / 404 / 409. |
 
 ## Example curls
+
+A longer walkthrough with every scenario from the brief plus corner cases, as plain copy-paste curl commands, is in
+[CURL-TESTS.md](CURL-TESTS.md). The assignment text is in
+[docs/task-b-travel-inventory-invoice.md](docs/task-b-travel-inventory-invoice.md).
 
 ```bash
 B=http://localhost:8080
@@ -99,10 +112,10 @@ curl -s -XPOST $B/transactions -H "$H" -d '{
               "related_external_id":"hotel-LON-2026-03-11"}}'
 ```
 
-The full set of bodies is in `src/main/resources/static/seed-payloads.json`. To load them all with `jq`:
+The full set of bodies is in `src/test/resources/fixtures/seed-payloads.json`. To load them all with `jq`:
 
 ```bash
-S=src/main/resources/static/seed-payloads.json
+S=src/test/resources/fixtures/seed-payloads.json
 for k in flight hotel rail trip_fee agent_call_fee; do
   curl -s -XPOST $B/transactions -H "$H" -d "$(jq -c ".$k" $S)" | jq -r '"\(.type) \(.id)"'
 done

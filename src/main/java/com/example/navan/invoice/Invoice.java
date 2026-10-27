@@ -3,11 +3,12 @@ package com.example.navan.invoice;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import tools.jackson.databind.JsonNode;
 
 /** A frozen invoice: every line is a copy of the transaction as it was when the invoice was built. */
 public record Invoice(
@@ -29,7 +30,7 @@ public record Invoice(
 			BigDecimal total,
 			@JsonProperty("tax_lines") List<TaxLine> taxLines,
 			@JsonProperty("fee_lines") List<FeeLine> feeLines,
-			Map<String, Object> metadata) {
+			JsonNode metadata) {
 	}
 
 	public record Summary(

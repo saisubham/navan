@@ -3,7 +3,6 @@ package com.example.navan.transaction;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -17,7 +16,7 @@ public record Transaction(
 		BigDecimal total,
 		@JsonProperty("tax_lines") List<TaxLine> taxLines,
 		@JsonProperty("fee_lines") List<FeeLine> feeLines,
-		Map<String, Object> metadata,
+		TransactionMetadata metadata,
 		@JsonProperty("created_at") Instant createdAt,
 		@JsonProperty("updated_at") Instant updatedAt) {
 

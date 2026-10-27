@@ -21,14 +21,14 @@ public class TransactionService {
 
 	private final TransactionRepository repository;
 	private final TransactionValidator validator;
-	private final MetadataHandlers handlers;
+	private final MetadataCodec codec;
 	private final TransactionTemplate tx;
 
-	TransactionService(TransactionRepository repository, TransactionValidator validator, MetadataHandlers handlers,
+	TransactionService(TransactionRepository repository, TransactionValidator validator, MetadataCodec codec,
 			TransactionTemplate tx) {
 		this.repository = repository;
 		this.validator = validator;
-		this.handlers = handlers;
+		this.codec = codec;
 		this.tx = tx;
 	}
 
@@ -87,18 +87,18 @@ public class TransactionService {
 			}
 			var total = patch.total() == null ? current.total() : validator.total(patch.total());
 			var occurredAt = patch.occurredAt() == null ? current.occurredAt()
-					: Meta.parseInstant(patch.occurredAt(), "occurred_at");
+					: Times.parse(patch.occurredAt(), "occurred_at");
 			var taxLines = patch.taxLines() == null ? null : validator.taxLines(patch.taxLines());
 			var feeLines = patch.feeLines() == null ? null : validator.feeLines(patch.feeLines());
-			MetadataHandlers.Split split = patch.metadata() == null ? null : handlers.normalize(type, patch.metadata());
+			TransactionMetadata metadata = patch.metadata() == null ? current.metadata()
+					: codec.decode(type, patch.metadata());
 
 			if (patch.total() == null && patch.occurredAt() == null && taxLines == null && feeLines == null
-					&& split == null) {
+					&& patch.metadata() == null) {
 				throw new ValidationException(
 						"nothing to update: supply total, occurred_at, tax_lines, fee_lines or metadata");
 			}
-			Map<String, Object> extra = split == null ? extraOf(current, type) : split.extra();
-			repository.updateHeader(id, occurredAt, total, extra);
+			repository.updateHeader(id, occurredAt, total, metadata);
 			if (taxLines != null) {
 				repository.deleteTaxLines(id);
 				repository.insertTaxLines(id, taxLines);
@@ -106,9 +106,6 @@ public class TransactionService {
 			if (feeLines != null) {
 				repository.deleteFeeLines(id);
 				repository.insertFeeLines(id, feeLines);
-			}
-			if (split != null) {
-				repository.replaceMetadata(id, type, split.known());
 			}
 		});
 		return get(id);
@@ -127,12 +124,5 @@ public class TransactionService {
 			throw new ConflictException("transaction_invoiced",
 					"transaction " + id + " is on an invoice and cannot be " + verb);
 		}
-	}
-
-	/** The unknown (extras) part of the stored metadata, so a header-only patch keeps it. */
-	private Map<String, Object> extraOf(Transaction current, String type) {
-		Map<String, Object> extra = new java.util.LinkedHashMap<>(current.metadata());
-		extra.keySet().removeAll(handlers.forType(type).knownKeys());
-		return extra;
 	}
 }

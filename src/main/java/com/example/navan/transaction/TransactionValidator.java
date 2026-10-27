@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
@@ -22,22 +21,22 @@ public class TransactionValidator {
 
 	private static final Pattern CURRENCY = Pattern.compile("[A-Z]{3}");
 
-	private final MetadataHandlers handlers;
+	private final MetadataCodec codec;
 
-	TransactionValidator(MetadataHandlers handlers) {
-		this.handlers = handlers;
+	TransactionValidator(MetadataCodec codec) {
+		this.codec = codec;
 	}
 
 	/** A fully validated, normalized create request. */
 	record Draft(String type, String externalId, String currency, Instant occurredAt, BigDecimal total,
-			List<TaxLine> taxLines, List<FeeLine> feeLines, Map<String, Object> metadata, Map<String, Object> extra) {
+			List<TaxLine> taxLines, List<FeeLine> feeLines, TransactionMetadata metadata) {
 	}
 
 	Draft validate(Create r) {
 		if (r == null) {
 			throw new ValidationException("request body is required");
 		}
-		handlers.forType(r.type());
+		codec.requireKnownType(r.type());
 		if (r.externalId() == null || r.externalId().isBlank() || r.externalId().length() > 128) {
 			throw new ValidationException("external_id is required (1-128 characters)");
 		}
@@ -47,7 +46,7 @@ public class TransactionValidator {
 		if (r.occurredAt() == null) {
 			throw new ValidationException("occurred_at is required");
 		}
-		Instant occurredAt = Meta.parseInstant(r.occurredAt(), "occurred_at");
+		Instant occurredAt = Times.parse(r.occurredAt(), "occurred_at");
 		BigDecimal total = total(r.total());
 		if (r.taxLines() == null) {
 			throw new ValidationException("tax_lines is required (may be empty)");
@@ -55,9 +54,8 @@ public class TransactionValidator {
 		if (r.feeLines() == null) {
 			throw new ValidationException("fee_lines is required (may be empty)");
 		}
-		MetadataHandlers.Split split = handlers.normalize(r.type(), r.metadata());
 		return new Draft(r.type(), r.externalId(), r.currency(), occurredAt, total, taxLines(r.taxLines()),
-				feeLines(r.feeLines()), split.known(), split.extra());
+				feeLines(r.feeLines()), codec.decode(r.type(), r.metadata()));
 	}
 
 	BigDecimal total(BigDecimal total) {

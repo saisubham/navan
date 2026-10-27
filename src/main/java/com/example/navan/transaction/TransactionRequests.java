@@ -2,9 +2,10 @@ package com.example.navan.transaction;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import tools.jackson.databind.JsonNode;
 
 public final class TransactionRequests {
 
@@ -25,7 +26,7 @@ public final class TransactionRequests {
 			BigDecimal total,
 			@JsonProperty("tax_lines") List<TaxLineRequest> taxLines,
 			@JsonProperty("fee_lines") List<FeeLineRequest> feeLines,
-			Map<String, Object> metadata) {
+			JsonNode metadata) {
 	}
 
 	/** Every field optional; null means "leave unchanged". type/external_id/currency are immutable. */
@@ -37,6 +38,6 @@ public final class TransactionRequests {
 			BigDecimal total,
 			@JsonProperty("tax_lines") List<TaxLineRequest> taxLines,
 			@JsonProperty("fee_lines") List<FeeLineRequest> feeLines,
-			Map<String, Object> metadata) {
+			JsonNode metadata) {
 	}
 }

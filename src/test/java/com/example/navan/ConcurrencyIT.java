@@ -72,7 +72,7 @@ class ConcurrencyIT extends IntegrationTestBase {
 		}
 		// children were written once, by the winner only
 		assertThat(count("transaction_tax_lines")).isEqualTo(3);
-		assertThat(count("flight_coupons")).isEqualTo(3);
+		assertThat(count("transactions")).isEqualTo(3);
 	}
 
 	@Test

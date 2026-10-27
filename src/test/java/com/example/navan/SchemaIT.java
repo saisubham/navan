@@ -37,8 +37,6 @@ class SchemaIT extends IntegrationTestBase {
 		assertThat(nonUnique("invoices", "created_at")).isNotEmpty();
 		assertThat(nonUnique("transaction_tax_lines", "transaction_id")).isNotEmpty();
 		assertThat(nonUnique("transaction_fee_lines", "transaction_id")).isNotEmpty();
-		assertThat(nonUnique("flight_coupons", "transaction_id")).isNotEmpty();
-		assertThat(nonUnique("rail_legs", "transaction_id")).isNotEmpty();
 	}
 
 	@Test
@@ -54,5 +52,17 @@ class SchemaIT extends IntegrationTestBase {
 				SELECT COLUMN_TYPE FROM information_schema.columns
 				WHERE table_schema = DATABASE() AND table_name = 'transactions' AND column_name = 'total'""")
 				.query(String.class).single()).isEqualTo("decimal(19,2)");
+	}
+
+	@Test
+	void typeSpecificDataAndSnapshotsAreJsonColumns() {
+		assertThat(jdbc.sql("""
+				SELECT COUNT(*) FROM information_schema.columns
+				WHERE table_schema = DATABASE() AND data_type = 'json'
+				  AND ((table_name = 'transactions' AND column_name = 'metadata')
+				    OR (table_name = 'invoice_transactions' AND column_name = 'snapshot'))""")
+				.query(Long.class).single()).isEqualTo(2);
+		assertThat(jdbc.sql("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()")
+				.query(Long.class).single()).isEqualTo(5);
 	}
 }

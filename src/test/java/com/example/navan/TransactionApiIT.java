@@ -67,7 +67,6 @@ class TransactionApiIT extends IntegrationTestBase {
 		Resp samePayloadAgain = post("/transactions", seed("flight"));
 		assertThat(samePayloadAgain.status()).isEqualTo(409);
 		assertThat(count("transactions")).isEqualTo(1);
-		assertThat(count("flight_coupons")).isEqualTo(1);
 	}
 
 	@Test
@@ -97,7 +96,7 @@ class TransactionApiIT extends IntegrationTestBase {
 
 	@Test
 	void invalidCreateLeavesNothingBehind() {
-		// bad coupon timestamp is only discovered while writing typed metadata: nothing may persist
+		// a bad coupon timestamp is rejected while normalizing metadata: nothing may persist
 		ObjectNode bad = seed("flight");
 		((ObjectNode) bad.get("metadata").get("coupons").get(0)).put("departure", "not-a-date");
 		assertThat(post("/transactions", bad).status()).isEqualTo(400);
@@ -151,7 +150,6 @@ class TransactionApiIT extends IntegrationTestBase {
 		String id = createSeed("hotel");
 		assertThat(delete("/transactions/" + id).status()).isEqualTo(204);
 		assertThat(get("/transactions/" + id).status()).isEqualTo(404);
-		assertThat(count("hotel_details")).isZero();
 		assertThat(count("transaction_tax_lines")).isZero();
 		assertThat(delete("/transactions/" + id).status()).isEqualTo(404);
 	}
@@ -159,5 +157,34 @@ class TransactionApiIT extends IntegrationTestBase {
 	@Test
 	void healthIsUp() {
 		assertThat(get("/health").status()).isEqualTo(200);
+	}
+
+	@Test
+	void validationErrorsNameTheOffendingField() {
+		ObjectNode badCoupon = seed("flight");
+		((ObjectNode) badCoupon.get("metadata").get("coupons").get(0)).put("departure", "not-a-date");
+		assertThat(post("/transactions", badCoupon).body().get("message").asString())
+				.contains("coupons[0].departure");
+
+		ObjectNode noFlightNumber = seed("flight");
+		((ObjectNode) noFlightNumber.get("metadata").get("coupons").get(0)).remove("flight_number");
+		assertThat(post("/transactions", noFlightNumber).body().get("message").asString())
+				.contains("metadata.coupons[0].flight_number");
+
+		ObjectNode badKind = seed("trip_fee");
+		((ObjectNode) badKind.get("metadata")).put("fee_kind", "coffee_fee");
+		assertThat(post("/transactions", badKind).body().get("message").asString())
+				.contains("fee_kind", "trip_fee", "agent_call_fee");
+
+		ObjectNode backwardsStay = seed("hotel");
+		((ObjectNode) backwardsStay.get("metadata")).put("check_out", "2026-03-10");
+		assertThat(post("/transactions", backwardsStay).body().get("message").asString())
+				.contains("check_out must be after check_in");
+
+		ObjectNode noAddressCity = seed("hotel");
+		((ObjectNode) noAddressCity.get("metadata").get("address")).remove("city");
+		assertThat(post("/transactions", noAddressCity).body().get("message").asString())
+				.contains("metadata.address.city");
+		assertThat(count("transactions")).isZero();
 	}
 }

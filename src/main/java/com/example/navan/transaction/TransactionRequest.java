@@ -7,9 +7,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import tools.jackson.databind.JsonNode;
 
-public final class TransactionRequests {
+public final class TransactionRequest {
 
-	private TransactionRequests() {
+	private TransactionRequest() {
 	}
 
 	public record TaxLineRequest(String name, BigDecimal rate, BigDecimal amount) {

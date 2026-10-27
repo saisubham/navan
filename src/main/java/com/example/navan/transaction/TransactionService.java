@@ -12,8 +12,8 @@ import com.example.navan.common.Exceptions.NotFoundException;
 import com.example.navan.common.Exceptions.ValidationException;
 import com.example.navan.common.Pagination;
 import com.example.navan.common.Pagination.Page;
-import com.example.navan.transaction.TransactionRequests.Create;
-import com.example.navan.transaction.TransactionRequests.Patch;
+import com.example.navan.transaction.TransactionRequest.Create;
+import com.example.navan.transaction.TransactionRequest.Patch;
 import com.example.navan.transaction.TransactionValidator.Draft;
 
 @Service
@@ -42,7 +42,7 @@ public class TransactionService {
 		repository.findIdByExternalId(draft.externalId()).ifPresent(this::duplicate);
 		String id;
 		try {
-			id = tx.execute(status -> repository.insert(draft));
+			id = tx.execute(_ -> repository.insert(draft));
 		}
 		catch (DuplicateKeyException e) {
 			repository.findIdByExternalId(draft.externalId()).ifPresent(this::duplicate);
@@ -57,7 +57,9 @@ public class TransactionService {
 	}
 
 	public Transaction get(String id) {
-		return repository.findByIds(List.of(id)).stream().findFirst()
+		return repository.findByIds(List.of(id))
+				.stream()
+				.findFirst()
 				.orElseThrow(() -> new NotFoundException("transaction " + id + " not found"));
 	}
 
@@ -112,7 +114,7 @@ public class TransactionService {
 	}
 
 	public void delete(String id) {
-		tx.executeWithoutResult(status -> {
+		tx.executeWithoutResult(_ -> {
 			repository.lockById(id).orElseThrow(() -> new NotFoundException("transaction " + id + " not found"));
 			assertNotInvoiced(id, "deleted");
 			repository.delete(id); // child rows go with it (ON DELETE CASCADE)

@@ -12,9 +12,9 @@ import com.example.navan.common.Exceptions.ValidationException;
 import com.example.navan.common.Money;
 import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
-import com.example.navan.transaction.TransactionRequests.Create;
-import com.example.navan.transaction.TransactionRequests.FeeLineRequest;
-import com.example.navan.transaction.TransactionRequests.TaxLineRequest;
+import com.example.navan.transaction.TransactionRequest.Create;
+import com.example.navan.transaction.TransactionRequest.FeeLineRequest;
+import com.example.navan.transaction.TransactionRequest.TaxLineRequest;
 
 @Component
 public class TransactionValidator {

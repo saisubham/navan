@@ -14,8 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.navan.common.Pagination.Page;
 import com.example.navan.transaction.Transaction;
-import com.example.navan.transaction.TransactionRequests.Create;
-import com.example.navan.transaction.TransactionRequests.Patch;
+import com.example.navan.transaction.TransactionRequest.Create;
+import com.example.navan.transaction.TransactionRequest.Patch;
 import com.example.navan.transaction.TransactionService;
 
 @RestController

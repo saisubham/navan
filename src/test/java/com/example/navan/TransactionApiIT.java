@@ -158,4 +158,33 @@ class TransactionApiIT extends IntegrationTestBase {
 	void healthIsUp() {
 		assertThat(get("/health").status()).isEqualTo(200);
 	}
+
+	@Test
+	void validationErrorsNameTheOffendingField() {
+		ObjectNode badCoupon = seed("flight");
+		((ObjectNode) badCoupon.get("metadata").get("coupons").get(0)).put("departure", "not-a-date");
+		assertThat(post("/transactions", badCoupon).body().get("message").asString())
+				.contains("coupons[0].departure");
+
+		ObjectNode noFlightNumber = seed("flight");
+		((ObjectNode) noFlightNumber.get("metadata").get("coupons").get(0)).remove("flight_number");
+		assertThat(post("/transactions", noFlightNumber).body().get("message").asString())
+				.contains("metadata.coupons[0].flight_number");
+
+		ObjectNode badKind = seed("trip_fee");
+		((ObjectNode) badKind.get("metadata")).put("fee_kind", "coffee_fee");
+		assertThat(post("/transactions", badKind).body().get("message").asString())
+				.contains("fee_kind", "trip_fee", "agent_call_fee");
+
+		ObjectNode backwardsStay = seed("hotel");
+		((ObjectNode) backwardsStay.get("metadata")).put("check_out", "2026-03-10");
+		assertThat(post("/transactions", backwardsStay).body().get("message").asString())
+				.contains("check_out must be after check_in");
+
+		ObjectNode noAddressCity = seed("hotel");
+		((ObjectNode) noAddressCity.get("metadata").get("address")).remove("city");
+		assertThat(post("/transactions", noAddressCity).body().get("message").asString())
+				.contains("metadata.address.city");
+		assertThat(count("transactions")).isZero();
+	}
 }

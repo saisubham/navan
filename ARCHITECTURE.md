@@ -6,7 +6,7 @@ constraints that make this correct are visible in the SQL.
 ```
 web/          HTTP only: controllers, exception -> status mapping
 transaction/  TransactionService (use cases, DB transactions) -> TransactionRepository (SQL)
-              TransactionValidator + MetadataNormalizer (per-type metadata validation)
+              TransactionValidator, TransactionMetadata (sealed record per type), MetadataCodec
 invoice/      InvoiceService (use cases) -> InvoiceRepository (SQL)
               InvoiceSnapshotBuilder (pure: copy, currency check, totals, rollups)
 common/       Money, Pagination, exceptions
@@ -47,15 +47,18 @@ are JSON, because they are written once and read back whole (the brief explicitl
 | Rail | `metadata`: `legs[]` (`origin`, `destination`, `departure`, `arrival`, `train_number`, `class`); a change of train is two legs |
 | Navan fee | `metadata`: `fee_kind` (`trip_fee` or `agent_call_fee`; anything else is 400), `description`, `related_external_id` |
 
-`MetadataNormalizer` is the single place that knows each type's shape. It validates on write (400 with the
-offending path, e.g. `metadata.coupons[0].departure`) and returns a canonical form: ISO strings for
-timestamps and dates, scale-2 `BigDecimal` for money. That canonical map is what is stored and returned, so
-GET returns coupons, the hotel address, rail legs and `fee_kind`, never an empty blob. A flight cannot be
-stored as a hotel because the normalizer is chosen by `type`. Unrecognized keys are kept and returned.
-A field can still be made queryable later with a generated column over `JSON_EXTRACT(metadata, ...)`.
+`TransactionMetadata` is a sealed interface with one record per type (`Flight`, `Hotel`, `Rail`, `NavanFee`).
+`type` is a sibling of `metadata` in the request, so there is no type tag inside metadata: `MetadataCodec` does
+a plain `switch` on the transaction's `type` and binds `metadata` to that record with Jackson. Validation is
+declarative (Bean Validation: `@NotBlank`, `@NotEmpty`, `@Valid`, `@PositiveOrZero`) and every failure is a 400
+naming the field, e.g. `metadata.coupons[0].flight_number must not be blank`. An unknown `type` or `fee_kind`
+is a 400. Records give typed `Instant` / `LocalDate` / `BigDecimal` (scaled to 2 in the compact constructor) and
+a `FeeKind` enum. Unrecognized keys are kept in an `extra` map and returned unchanged.
 
-MySQL's `JSON` type stores objects with keys in its own order, so key order inside `metadata` is not the
-order of the request. Array order (coupons, legs) is preserved.
+GET returns coupons, the hotel address, rail legs and `fee_kind`, never an empty blob, and a flight cannot be
+stored as a hotel because the record is chosen by `type`. The record is serialized into the `metadata` JSON
+column on write and read back into the same record on read, so output order is the record's declared order.
+A field can still be made queryable later with a generated column over `JSON_EXTRACT(metadata, ...)`.
 
 Loading is batched: any number of transactions costs three queries (headers, tax lines, fee lines), so lists
 have no N+1.

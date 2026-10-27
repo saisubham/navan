@@ -24,7 +24,7 @@ this project, run `docker compose down -v` once so the current schema is created
 ```
 
 Needs Docker running: the integration tests start a real `mysql:26.10.0` through Testcontainers and
-call the real HTTP API on a random port (37 tests: transactions, invoices, concurrency, schema, pagination).
+call the real HTTP API on a random port (38 tests: transactions, invoices, concurrency, schema, pagination).
 
 ## CI / image
 

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -17,11 +16,14 @@ import com.example.navan.invoice.InvoiceSnapshotBuilder.Snapshot;
 import com.example.navan.transaction.Transaction;
 import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
+import com.example.navan.transaction.TransactionMetadata;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /** Pure logic, no container. */
 class InvoiceSnapshotBuilderTest {
 
-	private final InvoiceSnapshotBuilder builder = new InvoiceSnapshotBuilder();
+	private final InvoiceSnapshotBuilder builder = new InvoiceSnapshotBuilder(JsonMapper.builder().build());
 
 	private static BigDecimal d(String s) {
 		return new BigDecimal(s);
@@ -29,7 +31,8 @@ class InvoiceSnapshotBuilderTest {
 
 	private static Transaction txn(String id, String currency, String total, List<TaxLine> taxes, List<FeeLine> fees) {
 		return new Transaction(id, "flight", "ext-" + id, currency, Instant.parse("2026-03-11T06:40:00Z"), d(total),
-				taxes, fees, Map.of(), Instant.now(), Instant.now());
+				taxes, fees, new TransactionMetadata.NavanFee(TransactionMetadata.FeeKind.TRIP_FEE, null, null, null),
+				Instant.now(), Instant.now());
 	}
 
 	@Test

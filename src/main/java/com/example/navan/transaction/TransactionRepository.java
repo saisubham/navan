@@ -21,7 +21,6 @@ import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
 import com.example.navan.transaction.TransactionValidator.Draft;
 
-import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 /** SQL for transactions and their child tables. Callers own the DB transaction. */
@@ -30,10 +29,12 @@ public class TransactionRepository {
 
 	private final JdbcClient jdbc;
 	private final ObjectMapper json;
+	private final MetadataCodec metadata;
 
-	TransactionRepository(JdbcClient jdbc, ObjectMapper json) {
+	TransactionRepository(JdbcClient jdbc, ObjectMapper json, MetadataCodec metadata) {
 		this.jdbc = jdbc;
 		this.json = json;
+		this.metadata = metadata;
 	}
 
 	/** Throws DuplicateKeyException when external_id already exists. */
@@ -44,7 +45,7 @@ public class TransactionRepository {
 				INSERT INTO transactions
 				(id, type, external_id, currency, occurred_at, total, metadata, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""")
-				.params(id, d.type(), d.externalId(), d.currency(), Meta.utc(d.occurredAt()), d.total(),
+				.params(id, d.type(), d.externalId(), d.currency(), Times.utc(d.occurredAt()), d.total(),
 						json.writeValueAsString(d.metadata()), now, now)
 				.update();
 		insertLines(id, d.taxLines(), d.feeLines());
@@ -80,9 +81,9 @@ public class TransactionRepository {
 		jdbc.sql("DELETE FROM transaction_fee_lines WHERE transaction_id = ?").param(id).update();
 	}
 
-	void updateHeader(String id, Instant occurredAt, BigDecimal total, Map<String, Object> metadata) {
+	void updateHeader(String id, Instant occurredAt, BigDecimal total, TransactionMetadata metadata) {
 		jdbc.sql("UPDATE transactions SET occurred_at = ?, total = ?, metadata = ?, updated_at = ? WHERE id = ?")
-				.params(Meta.utc(occurredAt), total, json.writeValueAsString(metadata),
+				.params(Times.utc(occurredAt), total, json.writeValueAsString(metadata),
 						LocalDateTime.now(java.time.ZoneOffset.UTC), id)
 				.update();
 	}
@@ -130,10 +131,10 @@ public class TransactionRepository {
 		Map<String, Header> headers = new HashMap<>();
 		jdbc.sql("SELECT * FROM transactions WHERE id IN (:ids)").param("ids", ids).query((rs, n) -> {
 			Header h = new Header(rs.getString("id"), rs.getString("type"), rs.getString("external_id"),
-					rs.getString("currency"), Meta.instant(rs.getObject("occurred_at", LocalDateTime.class)),
+					rs.getString("currency"), Times.instant(rs.getObject("occurred_at", LocalDateTime.class)),
 					Money.scale(rs.getBigDecimal("total")), rs.getString("metadata"),
-					Meta.instant(rs.getObject("created_at", LocalDateTime.class)),
-					Meta.instant(rs.getObject("updated_at", LocalDateTime.class)));
+					Times.instant(rs.getObject("created_at", LocalDateTime.class)),
+					Times.instant(rs.getObject("updated_at", LocalDateTime.class)));
 			headers.put(h.id(), h);
 			return null;
 		}).list();
@@ -161,14 +162,9 @@ public class TransactionRepository {
 				continue;
 			}
 			out.add(new Transaction(h.id(), h.type(), h.externalId(), h.currency(), h.occurredAt(), h.total(),
-					taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()), parseMetadata(h.metadata()),
+					taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()), metadata.fromStored(h.type(), h.metadata()),
 					h.createdAt(), h.updatedAt()));
 		}
 		return out;
-	}
-
-	private Map<String, Object> parseMetadata(String metadata) {
-		return json.readValue(metadata, new TypeReference<LinkedHashMap<String, Object>>() {
-		});
 	}
 }

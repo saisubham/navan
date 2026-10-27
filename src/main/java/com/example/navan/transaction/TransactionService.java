@@ -21,14 +21,14 @@ public class TransactionService {
 
 	private final TransactionRepository repository;
 	private final TransactionValidator validator;
-	private final MetadataNormalizer normalizer;
+	private final MetadataCodec codec;
 	private final TransactionTemplate tx;
 
-	TransactionService(TransactionRepository repository, TransactionValidator validator, MetadataNormalizer normalizer,
+	TransactionService(TransactionRepository repository, TransactionValidator validator, MetadataCodec codec,
 			TransactionTemplate tx) {
 		this.repository = repository;
 		this.validator = validator;
-		this.normalizer = normalizer;
+		this.codec = codec;
 		this.tx = tx;
 	}
 
@@ -87,11 +87,11 @@ public class TransactionService {
 			}
 			var total = patch.total() == null ? current.total() : validator.total(patch.total());
 			var occurredAt = patch.occurredAt() == null ? current.occurredAt()
-					: Meta.parseInstant(patch.occurredAt(), "occurred_at");
+					: Times.parse(patch.occurredAt(), "occurred_at");
 			var taxLines = patch.taxLines() == null ? null : validator.taxLines(patch.taxLines());
 			var feeLines = patch.feeLines() == null ? null : validator.feeLines(patch.feeLines());
-			Map<String, Object> metadata = patch.metadata() == null ? current.metadata()
-					: normalizer.normalize(type, patch.metadata());
+			TransactionMetadata metadata = patch.metadata() == null ? current.metadata()
+					: codec.decode(type, patch.metadata());
 
 			if (patch.total() == null && patch.occurredAt() == null && taxLines == null && feeLines == null
 					&& patch.metadata() == null) {

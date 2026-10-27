@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
@@ -22,22 +21,22 @@ public class TransactionValidator {
 
 	private static final Pattern CURRENCY = Pattern.compile("[A-Z]{3}");
 
-	private final MetadataNormalizer normalizer;
+	private final MetadataCodec codec;
 
-	TransactionValidator(MetadataNormalizer normalizer) {
-		this.normalizer = normalizer;
+	TransactionValidator(MetadataCodec codec) {
+		this.codec = codec;
 	}
 
 	/** A fully validated, normalized create request. */
 	record Draft(String type, String externalId, String currency, Instant occurredAt, BigDecimal total,
-			List<TaxLine> taxLines, List<FeeLine> feeLines, Map<String, Object> metadata) {
+			List<TaxLine> taxLines, List<FeeLine> feeLines, TransactionMetadata metadata) {
 	}
 
 	Draft validate(Create r) {
 		if (r == null) {
 			throw new ValidationException("request body is required");
 		}
-		normalizer.requireKnownType(r.type());
+		codec.requireKnownType(r.type());
 		if (r.externalId() == null || r.externalId().isBlank() || r.externalId().length() > 128) {
 			throw new ValidationException("external_id is required (1-128 characters)");
 		}
@@ -47,7 +46,7 @@ public class TransactionValidator {
 		if (r.occurredAt() == null) {
 			throw new ValidationException("occurred_at is required");
 		}
-		Instant occurredAt = Meta.parseInstant(r.occurredAt(), "occurred_at");
+		Instant occurredAt = Times.parse(r.occurredAt(), "occurred_at");
 		BigDecimal total = total(r.total());
 		if (r.taxLines() == null) {
 			throw new ValidationException("tax_lines is required (may be empty)");
@@ -56,7 +55,7 @@ public class TransactionValidator {
 			throw new ValidationException("fee_lines is required (may be empty)");
 		}
 		return new Draft(r.type(), r.externalId(), r.currency(), occurredAt, total, taxLines(r.taxLines()),
-				feeLines(r.feeLines()), normalizer.normalize(r.type(), r.metadata()));
+				feeLines(r.feeLines()), codec.decode(r.type(), r.metadata()));
 	}
 
 	BigDecimal total(BigDecimal total) {

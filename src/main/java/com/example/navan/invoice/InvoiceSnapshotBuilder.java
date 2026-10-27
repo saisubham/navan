@@ -15,12 +15,20 @@ import com.example.navan.transaction.Transaction;
 import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
 
+import tools.jackson.databind.ObjectMapper;
+
 /**
  * Pure logic: copies transactions into invoice lines, enforces a single currency, and computes totals
  * and rollups. Tax rollup groups by (name, rate); fee rollup groups by name. Both keep first-seen order.
  */
 @Component
 public class InvoiceSnapshotBuilder {
+
+	private final ObjectMapper json;
+
+	public InvoiceSnapshotBuilder(ObjectMapper json) {
+		this.json = json;
+	}
 
 	public record Snapshot(String currency, BigDecimal total, List<Line> lines, List<TaxLine> taxRollup,
 			List<FeeLine> feeRollup) {
@@ -45,7 +53,7 @@ public class InvoiceSnapshotBuilder {
 			t.taxLines().forEach(l -> taxes.merge(new TaxKey(l.name(), l.rate()), l.amount(), BigDecimal::add));
 			t.feeLines().forEach(l -> fees.merge(l.name(), l.amount(), BigDecimal::add));
 			lines.add(new Line(t.id(), t.type(), t.externalId(), t.currency(), t.occurredAt(), t.total(),
-					List.copyOf(t.taxLines()), List.copyOf(t.feeLines()), t.metadata()));
+					List.copyOf(t.taxLines()), List.copyOf(t.feeLines()), json.valueToTree(t.metadata())));
 		}
 		List<TaxLine> taxRollup = new ArrayList<>();
 		taxes.forEach((k, v) -> taxRollup.add(new TaxLine(k.name(), k.rate(), Money.scale(v))));

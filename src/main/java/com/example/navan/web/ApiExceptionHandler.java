@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -40,7 +40,7 @@ class ApiExceptionHandler {
 	}
 
 	/** Safety net: a unique/FK violation we did not translate is still a conflict, never a 500. */
-	@ExceptionHandler({ DuplicateKeyException.class, DeadlockLoserDataAccessException.class })
+	@ExceptionHandler({ DuplicateKeyException.class, PessimisticLockingFailureException.class })
 	ResponseEntity<Map<String, Object>> dataConflict(Exception e) {
 		return body(HttpStatus.CONFLICT, "conflict", "concurrent modification, retry", Map.of());
 	}

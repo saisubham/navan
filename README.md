@@ -14,6 +14,8 @@ Credentials in `docker-compose.yml` are dev placeholders (override with a gitign
 `.env.example`). No API keys are needed; nothing calls an LLM or any external service.
 
 Stop with `docker compose down` (add `-v` to also drop the database volume).
+The schema is created with `CREATE TABLE IF NOT EXISTS`; if you have a database volume from an older version of
+this project, run `docker compose down -v` once so the current schema is created.
 
 ## Run the tests (one command)
 
@@ -22,7 +24,7 @@ Stop with `docker compose down` (add `-v` to also drop the database volume).
 ```
 
 Needs Docker running: the integration tests start a real `mysql:26.10.0` through Testcontainers and
-call the real HTTP API on a random port (36 tests: transactions, invoices, concurrency, schema, pagination).
+call the real HTTP API on a random port (37 tests: transactions, invoices, concurrency, schema, pagination).
 
 ## CI / image
 

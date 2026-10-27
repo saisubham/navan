@@ -67,7 +67,6 @@ class TransactionApiIT extends IntegrationTestBase {
 		Resp samePayloadAgain = post("/transactions", seed("flight"));
 		assertThat(samePayloadAgain.status()).isEqualTo(409);
 		assertThat(count("transactions")).isEqualTo(1);
-		assertThat(count("flight_coupons")).isEqualTo(1);
 	}
 
 	@Test
@@ -97,7 +96,7 @@ class TransactionApiIT extends IntegrationTestBase {
 
 	@Test
 	void invalidCreateLeavesNothingBehind() {
-		// bad coupon timestamp is only discovered while writing typed metadata: nothing may persist
+		// a bad coupon timestamp is rejected while normalizing metadata: nothing may persist
 		ObjectNode bad = seed("flight");
 		((ObjectNode) bad.get("metadata").get("coupons").get(0)).put("departure", "not-a-date");
 		assertThat(post("/transactions", bad).status()).isEqualTo(400);
@@ -151,7 +150,6 @@ class TransactionApiIT extends IntegrationTestBase {
 		String id = createSeed("hotel");
 		assertThat(delete("/transactions/" + id).status()).isEqualTo(204);
 		assertThat(get("/transactions/" + id).status()).isEqualTo(404);
-		assertThat(count("hotel_details")).isZero();
 		assertThat(count("transaction_tax_lines")).isZero();
 		assertThat(delete("/transactions/" + id).status()).isEqualTo(404);
 	}

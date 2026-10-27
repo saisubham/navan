@@ -110,7 +110,8 @@ class InvoiceApiIT extends IntegrationTestBase {
 
 		jdbc.sql("UPDATE transactions SET total = 999.99 WHERE id = ?").param(trip.flight).update();
 		jdbc.sql("DELETE FROM transaction_fee_lines WHERE transaction_id = ?").param(trip.flight).update();
-		jdbc.sql("UPDATE flight_coupons SET flight_number = 'XX1' WHERE transaction_id = ?").param(trip.flight).update();
+		jdbc.sql("UPDATE transactions SET metadata = JSON_SET(metadata, '$.coupons[0].flight_number', 'XX1') WHERE id = ?")
+				.param(trip.flight).update();
 		assertThat(get("/transactions/" + trip.flight).body().get("total").decimalValue()).isEqualByComparingTo("999.99");
 
 		JsonNode invoice = get("/invoices/" + invoiceId).body();
@@ -180,7 +181,6 @@ class InvoiceApiIT extends IntegrationTestBase {
 			assertThat(get("/transactions/" + id).status()).isEqualTo(200);
 		}
 		assertThat(count("invoice_transactions")).isZero();
-		assertThat(count("invoice_tax_rollup")).isZero();
 		assertThat(delete("/invoices/" + invoiceId).status()).isEqualTo(404);
 		// and the transactions are billable-free again
 		assertThat(delete("/transactions/" + trip.hotel).status()).isEqualTo(204);

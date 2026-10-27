@@ -22,22 +22,22 @@ public class TransactionValidator {
 
 	private static final Pattern CURRENCY = Pattern.compile("[A-Z]{3}");
 
-	private final MetadataHandlers handlers;
+	private final MetadataNormalizer normalizer;
 
-	TransactionValidator(MetadataHandlers handlers) {
-		this.handlers = handlers;
+	TransactionValidator(MetadataNormalizer normalizer) {
+		this.normalizer = normalizer;
 	}
 
 	/** A fully validated, normalized create request. */
 	record Draft(String type, String externalId, String currency, Instant occurredAt, BigDecimal total,
-			List<TaxLine> taxLines, List<FeeLine> feeLines, Map<String, Object> metadata, Map<String, Object> extra) {
+			List<TaxLine> taxLines, List<FeeLine> feeLines, Map<String, Object> metadata) {
 	}
 
 	Draft validate(Create r) {
 		if (r == null) {
 			throw new ValidationException("request body is required");
 		}
-		handlers.forType(r.type());
+		normalizer.requireKnownType(r.type());
 		if (r.externalId() == null || r.externalId().isBlank() || r.externalId().length() > 128) {
 			throw new ValidationException("external_id is required (1-128 characters)");
 		}
@@ -55,9 +55,8 @@ public class TransactionValidator {
 		if (r.feeLines() == null) {
 			throw new ValidationException("fee_lines is required (may be empty)");
 		}
-		MetadataHandlers.Split split = handlers.normalize(r.type(), r.metadata());
 		return new Draft(r.type(), r.externalId(), r.currency(), occurredAt, total, taxLines(r.taxLines()),
-				feeLines(r.feeLines()), split.known(), split.extra());
+				feeLines(r.feeLines()), normalizer.normalize(r.type(), r.metadata()));
 	}
 
 	BigDecimal total(BigDecimal total) {

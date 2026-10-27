@@ -6,7 +6,7 @@ constraints that make this correct are visible in the SQL.
 ```
 web/          HTTP only: controllers, exception -> status mapping
 transaction/  TransactionService (use cases, DB transactions) -> TransactionRepository (SQL)
-              TransactionValidator + MetadataHandler per type (flight, hotel, rail, navan_fee)
+              TransactionValidator + MetadataNormalizer (per-type metadata validation)
 invoice/      InvoiceService (use cases) -> InvoiceRepository (SQL)
               InvoiceSnapshotBuilder (pure: copy, currency check, totals, rollups)
 common/       Money, Pagination, exceptions
@@ -34,43 +34,53 @@ are `BigDecimal` sums (`InvoiceSnapshotBuilderTest` covers `0.1 + 0.2 + 0.3 == 0
 
 ## Tables and models
 
-Shared header plus typed child tables, so everything is real columns that can be queried and indexed:
+Five tables. Identity, taxes and fees are real columns/tables; type-specific details and frozen snapshots
+are JSON, because they are written once and read back whole (the brief explicitly allows this).
 
-| Concern | Tables |
+| Concern | Storage |
 |---|---|
-| Header | `transactions(id, type, external_id UNIQUE, currency, occurred_at, total, metadata_extra, ...)` |
+| Header | `transactions(id, type, external_id UNIQUE, currency, occurred_at, total, metadata JSON, ...)` |
 | Taxes (government/VAT style) | `transaction_tax_lines(transaction_id, seq, name, rate, amount)` |
 | Fees (carrier/merchant) | `transaction_fee_lines(transaction_id, seq, name, amount)` - a separate table, never mixed with taxes |
-| Flight | `flight_details(origin, destination, fare)` + `flight_coupons(seq, flight_number, carrier, from, to, departure, arrival)` |
-| Hotel | `hotel_details(name, street, city, country, check_in, check_out, nights, room_rate_per_night)` + `hotel_extras` |
-| Rail | `rail_legs(seq, origin, destination, departure, arrival, train_number, class)`; a change of train is two rows |
-| Navan fee | `navan_fee_details(fee_kind, description, related_external_id)`; `fee_kind` is `trip_fee` or `agent_call_fee`, anything else is 400 |
+| Flight | `metadata`: `origin`, `destination`, `fare`, `coupons[]` (`flight_number`, `carrier`, `from`, `to`, `departure`, `arrival`) |
+| Hotel | `metadata`: `name`, `address{street,city,country}`, `check_in`, `check_out`, `nights`, `room_rate_per_night`, `extras[]` |
+| Rail | `metadata`: `legs[]` (`origin`, `destination`, `departure`, `arrival`, `train_number`, `class`); a change of train is two legs |
+| Navan fee | `metadata`: `fee_kind` (`trip_fee` or `agent_call_fee`; anything else is 400), `description`, `related_external_id` |
 
-`metadata` is a view of those tables: each `MetadataHandler` validates the shape on write, stores it in its
-tables, and rebuilds the JSON on read, so GET returns coupons, the hotel address, rail legs and `fee_kind` and
-never an empty blob. A flight cannot be stored as a hotel because the handler is chosen by `type`. Extra,
-unrecognized metadata keys are kept in `transactions.metadata_extra` and returned unchanged.
+`MetadataNormalizer` is the single place that knows each type's shape. It validates on write (400 with the
+offending path, e.g. `metadata.coupons[0].departure`) and returns a canonical form: ISO strings for
+timestamps and dates, scale-2 `BigDecimal` for money. That canonical map is what is stored and returned, so
+GET returns coupons, the hotel address, rail legs and `fee_kind`, never an empty blob. A flight cannot be
+stored as a hotel because the normalizer is chosen by `type`. Unrecognized keys are kept and returned.
+A field can still be made queryable later with a generated column over `JSON_EXTRACT(metadata, ...)`.
 
-Loading is batched: any number of transactions costs a fixed number of queries (header, tax, fee, one or two
-per type), so lists have no N+1.
+MySQL's `JSON` type stores objects with keys in its own order, so key order inside `metadata` is not the
+order of the request. Array order (coupons, legs) is preserved.
+
+Loading is batched: any number of transactions costs three queries (headers, tax lines, fee lines), so lists
+have no N+1.
 
 ## Invoice snapshot
 
-`invoices` + `invoice_transactions` (one row per included transaction: type, external_id, currency, occurred_at,
-total, `metadata_json`) + `invoice_tax_lines` / `invoice_fee_lines` (copies of the transaction's lines) +
-`invoice_tax_rollup` / `invoice_fee_rollup`. Content is **copied** when the invoice is built; `transaction_id`
-is only a reference. Nothing on the invoice read path joins to `transactions`, so later edits cannot change an
-invoice. Tax rollup groups by `(name, rate)`, fee rollup by `name`; the grand total is the sum of the lines.
+`invoices(id, currency, total, tax_rollup JSON, fee_rollup JSON, ...)` and
+`invoice_transactions(invoice_id, position, transaction_id, snapshot JSON)`. When an invoice is built, each
+transaction (type, external_id, currency, occurred_at, total, tax lines, fee lines, metadata) is **copied** into
+`snapshot`; `transaction_id` is only a reference. Reading an invoice is two queries against these two tables and
+never joins `transactions`, so later edits cannot change an invoice. Tax rollup groups by `(name, rate)`, fee
+rollup by `name`; the grand total is the sum of the lines.
+
+`transaction_id` stays a real indexed column on purpose: it answers "is this transaction billed?" and, with
+the `ON DELETE RESTRICT` foreign key, makes the database refuse to delete a billed transaction even if
+application code were wrong.
 
 Rules enforced:
 
 - one currency per invoice (409), repeated id in one request (409), any missing id (404),
 - `PATCH /transactions/{id}` and `DELETE /transactions/{id}` return 409 if the id is on any invoice
-  (checked via `idx_invoice_txn_transaction`); the FK `invoice_transactions -> transactions` is
-  `ON DELETE RESTRICT`, so the database refuses even if application code were wrong,
+  (checked via `idx_invoice_txn_transaction`),
 - `PATCH /invoices/{id}` deletes and rebuilds the snapshot from current data inside one DB transaction; any
   failure rolls back to the previous snapshot,
-- `DELETE /invoices/{id}` cascades only through invoice tables.
+- `DELETE /invoices/{id}` cascades only through `invoice_transactions`.
 
 ### Locking order (why races are safe)
 
@@ -96,7 +106,7 @@ What breaks first, in order, and what is done about it:
    short transaction (a handful of statements on indexed `transaction_id`), so the queue drains quickly and the
    result is last-write-wins, never torn.
 3. **Unbounded lists.** `limit` is mandatory with default 50 and hard max 100 (larger is 400); SQL always has
-   `LIMIT/OFFSET` (we fetch `limit+1` to compute `has_more`, no `COUNT(*)`). Children are loaded for the page
+   `LIMIT/OFFSET` (we fetch `limit+1` to compute `has_more`, no `COUNT(*)`). Tax and fee lines are loaded for the page
    only, in batched `IN (...)` queries. Nothing paginates in memory.
 4. **Deep `OFFSET` scans.** `OFFSET` cost grows with the offset. The list order is `(created_at, id)` which has
    a covering index (`idx_transactions_created`, `idx_invoices_created`), so it is an index scan, not a sort. The
@@ -105,8 +115,8 @@ What breaks first, in order, and what is done about it:
    index probe instead of a table scan.
 
 Indexes: `UNIQUE(transactions.external_id)`; `(created_at, id)` on `transactions` and `invoices`;
-`invoice_transactions(transaction_id)` and `(invoice_id, transaction_id)` unique; `(transaction_id, seq)` on every
-child table; `(invoice_id, seq)` on rollups. `SchemaIT` asserts these (and InnoDB, `DECIMAL(19,2)`) against
+`invoice_transactions(transaction_id)` and `(invoice_id, transaction_id)` unique; `(transaction_id, seq)` on the
+tax and fee line tables. `SchemaIT` asserts these (and InnoDB, `DECIMAL(19,2)`) against
 `information_schema`, so they cannot silently disappear.
 
 ## Tests

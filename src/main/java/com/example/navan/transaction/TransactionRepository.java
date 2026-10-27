@@ -29,12 +29,10 @@ import tools.jackson.databind.ObjectMapper;
 public class TransactionRepository {
 
 	private final JdbcClient jdbc;
-	private final MetadataHandlers handlers;
 	private final ObjectMapper json;
 
-	TransactionRepository(JdbcClient jdbc, MetadataHandlers handlers, ObjectMapper json) {
+	TransactionRepository(JdbcClient jdbc, ObjectMapper json) {
 		this.jdbc = jdbc;
-		this.handlers = handlers;
 		this.json = json;
 	}
 
@@ -44,13 +42,12 @@ public class TransactionRepository {
 		LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
 		jdbc.sql("""
 				INSERT INTO transactions
-				(id, type, external_id, currency, occurred_at, total, metadata_extra, created_at, updated_at)
+				(id, type, external_id, currency, occurred_at, total, metadata, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""")
 				.params(id, d.type(), d.externalId(), d.currency(), Meta.utc(d.occurredAt()), d.total(),
-						extraJson(d.extra()), now, now)
+						json.writeValueAsString(d.metadata()), now, now)
 				.update();
 		insertLines(id, d.taxLines(), d.feeLines());
-		handlers.forType(d.type()).insert(jdbc, id, d.metadata());
 		return id;
 	}
 
@@ -83,15 +80,10 @@ public class TransactionRepository {
 		jdbc.sql("DELETE FROM transaction_fee_lines WHERE transaction_id = ?").param(id).update();
 	}
 
-	void replaceMetadata(String id, String type, Map<String, Object> known) {
-		MetadataHandler handler = handlers.forType(type);
-		handler.delete(jdbc, id);
-		handler.insert(jdbc, id, known);
-	}
-
-	void updateHeader(String id, Instant occurredAt, BigDecimal total, Map<String, Object> extra) {
-		jdbc.sql("UPDATE transactions SET occurred_at = ?, total = ?, metadata_extra = ?, updated_at = ? WHERE id = ?")
-				.params(Meta.utc(occurredAt), total, extraJson(extra), LocalDateTime.now(java.time.ZoneOffset.UTC), id)
+	void updateHeader(String id, Instant occurredAt, BigDecimal total, Map<String, Object> metadata) {
+		jdbc.sql("UPDATE transactions SET occurred_at = ?, total = ?, metadata = ?, updated_at = ? WHERE id = ?")
+				.params(Meta.utc(occurredAt), total, json.writeValueAsString(metadata),
+						LocalDateTime.now(java.time.ZoneOffset.UTC), id)
 				.update();
 	}
 
@@ -133,13 +125,13 @@ public class TransactionRepository {
 			return List.of();
 		}
 		record Header(String id, String type, String externalId, String currency, Instant occurredAt, BigDecimal total,
-				String extra, Instant createdAt, Instant updatedAt) {
+				String metadata, Instant createdAt, Instant updatedAt) {
 		}
 		Map<String, Header> headers = new HashMap<>();
 		jdbc.sql("SELECT * FROM transactions WHERE id IN (:ids)").param("ids", ids).query((rs, n) -> {
 			Header h = new Header(rs.getString("id"), rs.getString("type"), rs.getString("external_id"),
 					rs.getString("currency"), Meta.instant(rs.getObject("occurred_at", LocalDateTime.class)),
-					Money.scale(rs.getBigDecimal("total")), rs.getString("metadata_extra"),
+					Money.scale(rs.getBigDecimal("total")), rs.getString("metadata"),
 					Meta.instant(rs.getObject("created_at", LocalDateTime.class)),
 					Meta.instant(rs.getObject("updated_at", LocalDateTime.class)));
 			headers.put(h.id(), h);
@@ -162,32 +154,21 @@ public class TransactionRepository {
 					return null;
 				}).list();
 
-		Map<String, List<String>> idsByType = new HashMap<>();
-		headers.values().forEach(h -> idsByType.computeIfAbsent(h.type(), k -> new ArrayList<>()).add(h.id()));
-		Map<String, Map<String, Object>> metadata = new HashMap<>();
-		idsByType.forEach((type, typeIds) -> metadata.putAll(handlers.forType(type).load(jdbc, typeIds)));
-
 		List<Transaction> out = new ArrayList<>();
 		for (String id : ids) {
 			Header h = headers.get(id);
 			if (h == null) {
 				continue;
 			}
-			Map<String, Object> md = new LinkedHashMap<>(metadata.getOrDefault(id, Map.of()));
-			md.putAll(parseExtra(h.extra()));
 			out.add(new Transaction(h.id(), h.type(), h.externalId(), h.currency(), h.occurredAt(), h.total(),
-					taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()), md, h.createdAt(),
-					h.updatedAt()));
+					taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()), parseMetadata(h.metadata()),
+					h.createdAt(), h.updatedAt()));
 		}
 		return out;
 	}
 
-	private String extraJson(Map<String, Object> extra) {
-		return extra == null || extra.isEmpty() ? null : json.writeValueAsString(extra);
-	}
-
-	private Map<String, Object> parseExtra(String extra) {
-		return extra == null ? Map.of() : json.readValue(extra, new TypeReference<Map<String, Object>>() {
+	private Map<String, Object> parseMetadata(String metadata) {
+		return json.readValue(metadata, new TypeReference<LinkedHashMap<String, Object>>() {
 		});
 	}
 }

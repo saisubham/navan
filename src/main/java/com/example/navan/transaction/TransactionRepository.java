@@ -19,7 +19,7 @@ import org.springframework.stereotype.Repository;
 import com.example.navan.common.Money;
 import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
-import com.example.navan.transaction.TransactionValidator.Draft;
+import com.example.navan.transaction.TransactionRequest.Create;
 
 import tools.jackson.databind.ObjectMapper;
 
@@ -38,17 +38,17 @@ public class TransactionRepository {
 	}
 
 	/** Throws DuplicateKeyException when external_id already exists. */
-	String insert(Draft d) {
+	String insert(Create r, TransactionMetadata md) {
 		String id = "txn_" + UUID.randomUUID();
 		LocalDateTime now = LocalDateTime.now(java.time.ZoneOffset.UTC);
 		jdbc.sql("""
 				INSERT INTO transactions
 				(id, type, external_id, currency, occurred_at, total, metadata, created_at, updated_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""")
-				.params(id, d.type(), d.externalId(), d.currency(), Times.utc(d.occurredAt()), d.total(),
-						json.writeValueAsString(d.metadata()), now, now)
+				.params(id, r.type().value(), r.externalId(), r.currency(), Times.utc(r.occurredAt()), r.total(),
+						json.writeValueAsString(md), now, now)
 				.update();
-		insertLines(id, d.taxLines(), d.feeLines());
+		insertLines(id, r.taxLines(), r.feeLines());
 		return id;
 	}
 

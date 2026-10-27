@@ -14,9 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.navan.common.Pagination.Page;
 import com.example.navan.transaction.Transaction;
-import com.example.navan.transaction.TransactionRequests.Create;
-import com.example.navan.transaction.TransactionRequests.Patch;
+import com.example.navan.transaction.TransactionRequest.Create;
+import com.example.navan.transaction.TransactionRequest.Patch;
 import com.example.navan.transaction.TransactionService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/transactions")
@@ -30,7 +32,7 @@ class TransactionController {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	Transaction create(@RequestBody Create request) {
+	Transaction create(@Valid @RequestBody Create request) {
 		return service.create(request);
 	}
 
@@ -46,7 +48,7 @@ class TransactionController {
 	}
 
 	@PatchMapping("/{id}")
-	Transaction patch(@PathVariable String id, @RequestBody Patch patch) {
+	Transaction patch(@PathVariable String id, @Valid @RequestBody Patch patch) {
 		return service.patch(id, patch);
 	}
 

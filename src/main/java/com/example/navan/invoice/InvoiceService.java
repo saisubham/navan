@@ -39,14 +39,14 @@ public class InvoiceService {
 
 	public Invoice create(Request request) {
 		List<String> ids = resolveIds(request);
-		String id = tx.execute(status -> invoices.insert(snapshotOf(ids)));
+		String id = tx.execute(_ -> invoices.insert(snapshotOf(ids)));
 		return get(id);
 	}
 
 	/** Rebuilds the snapshot from the CURRENT stored transactions, atomically; failures leave it untouched. */
 	public Invoice replace(String id, Request request) {
 		List<String> ids = resolveIds(request);
-		tx.executeWithoutResult(status -> {
+		tx.executeWithoutResult(_ -> {
 			if (!invoices.lock(id)) {
 				throw new NotFoundException("invoice " + id + " not found");
 			}
@@ -56,7 +56,7 @@ public class InvoiceService {
 	}
 
 	public void delete(String id) {
-		tx.executeWithoutResult(status -> {
+		tx.executeWithoutResult(_ -> {
 			if (!invoices.lock(id)) {
 				throw new NotFoundException("invoice " + id + " not found");
 			}

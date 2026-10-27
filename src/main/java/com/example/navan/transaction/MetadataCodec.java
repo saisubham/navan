@@ -1,7 +1,6 @@
 package com.example.navan.transaction;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
@@ -23,12 +22,6 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class MetadataCodec {
 
-	private static final Map<String, Class<? extends TransactionMetadata>> TYPES = Map.of(
-			"flight", TransactionMetadata.Flight.class,
-			"hotel", TransactionMetadata.Hotel.class,
-			"rail", TransactionMetadata.Rail.class,
-			"navan_fee", TransactionMetadata.NavanFee.class);
-
 	private final ObjectMapper json;
 	private final Validator validator;
 
@@ -37,15 +30,8 @@ public class MetadataCodec {
 		this.validator = validator;
 	}
 
-	public void requireKnownType(String type) {
-		if (type == null || !TYPES.containsKey(type)) {
-			throw new ValidationException("type must be one of " + TYPES.keySet().stream().sorted().toList());
-		}
-	}
-
 	/** Request path: bind, then validate. */
-	public TransactionMetadata decode(String type, JsonNode raw) {
-		requireKnownType(type);
+	public TransactionMetadata decode(TransactionType type, JsonNode raw) {
 		if (raw == null || raw.isNull()) {
 			throw new ValidationException("metadata is required");
 		}
@@ -54,7 +40,7 @@ public class MetadataCodec {
 		}
 		TransactionMetadata metadata;
 		try {
-			metadata = json.treeToValue(raw, TYPES.get(type));
+			metadata = json.treeToValue(raw, type.metadataType());
 		}
 		catch (JacksonException e) {
 			throw new ValidationException(describe(e));
@@ -71,7 +57,7 @@ public class MetadataCodec {
 
 	/** Read path: JSON column text back into the record (already validated when it was written). */
 	public TransactionMetadata fromStored(String type, String text) {
-		return json.readValue(text, TYPES.get(type));
+		return json.readValue(text, TransactionType.fromValue(type).metadataType());
 	}
 
 	private String describe(ConstraintViolation<TransactionMetadata> v) {

@@ -18,7 +18,7 @@ common/       Money, Pagination, exceptions
 
 1. validate (400s never touch the DB),
 2. cheap pre-check by `external_id` (fast 409 for the common case),
-3. one DB transaction: insert header, tax lines, fee lines, typed metadata rows.
+3. one DB transaction: insert the header row (typed metadata is its JSON column), then tax lines and fee lines.
 
 Two overlapping POSTs both pass the pre-check, then both INSERT. InnoDB makes the second INSERT wait on the
 unique-index lock of the first; when the first commits the second fails with `DuplicateKeyException`, its whole

@@ -90,7 +90,7 @@ public abstract class IntegrationTestBase {
 
 	/** Seed payload from the shipped fixture, e.g. "flight", "hotel", "rail", "trip_fee", "agent_call_fee". */
 	protected static ObjectNode seed(String name) {
-		try (InputStream in = IntegrationTestBase.class.getResourceAsStream("/static/seed-payloads.json")) {
+		try (InputStream in = IntegrationTestBase.class.getResourceAsStream("/fixtures/seed-payloads.json")) {
 			return ((ObjectNode) JSON.readTree(in).get(name)).deepCopy();
 		}
 		catch (IOException e) {
@@ -99,7 +99,7 @@ public abstract class IntegrationTestBase {
 	}
 
 	protected static JsonNode fixture(String file) {
-		try (InputStream in = IntegrationTestBase.class.getResourceAsStream("/static/" + file)) {
+		try (InputStream in = IntegrationTestBase.class.getResourceAsStream("/fixtures/" + file)) {
 			return JSON.readTree(in);
 		}
 		catch (IOException e) {

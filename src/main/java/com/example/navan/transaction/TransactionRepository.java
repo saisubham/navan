@@ -1,18 +1,23 @@
 package com.example.navan.transaction;
 
 import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -120,51 +125,59 @@ public class TransactionRepository {
 				.params(limit, offset).query(String.class).list();
 	}
 
-	/** Batched load (a fixed number of queries regardless of how many ids). Order follows the input ids. */
+	private static final String TAX_LINES_SQL = """
+			SELECT transaction_id, name, rate, amount FROM transaction_tax_lines
+			WHERE transaction_id IN (:ids) ORDER BY transaction_id, seq""";
+
+	private static final String FEE_LINES_SQL = """
+			SELECT transaction_id, name, amount FROM transaction_fee_lines
+			WHERE transaction_id IN (:ids) ORDER BY transaction_id, seq""";
+
+	/** Batched load (three queries regardless of how many ids). Order follows the input ids. */
 	public List<Transaction> findByIds(List<String> ids) {
-		if (ids.isEmpty()) {
+		if (ids.isEmpty()) { // an empty IN () list is a syntax error
 			return List.of();
 		}
-		record Header(String id, String type, String externalId, String currency, Instant occurredAt, BigDecimal total,
-				String metadata, Instant createdAt, Instant updatedAt) {
-		}
-		Map<String, Header> headers = new HashMap<>();
-		jdbc.sql("SELECT * FROM transactions WHERE id IN (:ids)").param("ids", ids).query((rs, n) -> {
-			Header h = new Header(rs.getString("id"), rs.getString("type"), rs.getString("external_id"),
-					rs.getString("currency"), Times.instant(rs.getObject("occurred_at", LocalDateTime.class)),
-					Money.scale(rs.getBigDecimal("total")), rs.getString("metadata"),
-					Times.instant(rs.getObject("created_at", LocalDateTime.class)),
-					Times.instant(rs.getObject("updated_at", LocalDateTime.class)));
-			headers.put(h.id(), h);
-			return null;
-		}).list();
+		Map<String, List<TaxLine>> taxes = linesByTransaction(TAX_LINES_SQL, ids, this::toTaxLine);
+		Map<String, List<FeeLine>> fees = linesByTransaction(FEE_LINES_SQL, ids, this::toFeeLine);
+		Map<String, Transaction> byId = loadTransactions(ids, taxes, fees);
+		return ids.stream().map(byId::get).filter(Objects::nonNull).toList();
+	}
 
-		Map<String, List<TaxLine>> taxes = new HashMap<>();
-		jdbc.sql("SELECT transaction_id, name, rate, amount FROM transaction_tax_lines WHERE transaction_id IN (:ids) ORDER BY transaction_id, seq")
-				.param("ids", ids).query((rs, n) -> {
-					taxes.computeIfAbsent(rs.getString("transaction_id"), k -> new ArrayList<>())
-							.add(new TaxLine(rs.getString("name"), Money.rate(rs.getBigDecimal("rate")),
-									Money.scale(rs.getBigDecimal("amount"))));
-					return null;
-				}).list();
-		Map<String, List<FeeLine>> fees = new HashMap<>();
-		jdbc.sql("SELECT transaction_id, name, amount FROM transaction_fee_lines WHERE transaction_id IN (:ids) ORDER BY transaction_id, seq")
-				.param("ids", ids).query((rs, n) -> {
-					fees.computeIfAbsent(rs.getString("transaction_id"), k -> new ArrayList<>())
-							.add(new FeeLine(rs.getString("name"), Money.scale(rs.getBigDecimal("amount"))));
-					return null;
-				}).list();
+	private Map<String, Transaction> loadTransactions(List<String> ids, Map<String, List<TaxLine>> taxes,
+			Map<String, List<FeeLine>> fees) {
+		return jdbc.sql("SELECT * FROM transactions WHERE id IN (:ids)").param("ids", ids)
+				.query((rs, n) -> toTransaction(rs, taxes, fees)).list().stream()
+				.collect(Collectors.toMap(Transaction::id, Function.identity()));
+	}
 
-		List<Transaction> out = new ArrayList<>();
-		for (String id : ids) {
-			Header h = headers.get(id);
-			if (h == null) {
-				continue;
-			}
-			out.add(new Transaction(h.id(), h.type(), h.externalId(), h.currency(), h.occurredAt(), h.total(),
-					taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()), metadata.fromStored(h.type(), h.metadata()),
-					h.createdAt(), h.updatedAt()));
-		}
-		return out;
+	/** Runs a "lines for these transactions" query and groups the rows by transaction_id, keeping seq order. */
+	private <T> Map<String, List<T>> linesByTransaction(String sql, List<String> ids, RowMapper<T> mapper) {
+		Map<String, List<T>> byTransaction = new HashMap<>();
+		jdbc.sql(sql).param("ids", ids).query(rs -> {
+			byTransaction.computeIfAbsent(rs.getString("transaction_id"), _ -> new ArrayList<>())
+					.add(mapper.mapRow(rs, rs.getRow()));
+		});
+		return byTransaction;
+	}
+
+	private Transaction toTransaction(ResultSet rs, Map<String, List<TaxLine>> taxes,
+			Map<String, List<FeeLine>> fees) throws SQLException {
+		String id = rs.getString("id");
+		String type = rs.getString("type");
+		return new Transaction(id, type, rs.getString("external_id"), rs.getString("currency"),
+				Times.instant(rs.getObject("occurred_at", LocalDateTime.class)), rs.getBigDecimal("total"),
+				taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()),
+				metadata.fromStored(type, rs.getString("metadata")),
+				Times.instant(rs.getObject("created_at", LocalDateTime.class)),
+				Times.instant(rs.getObject("updated_at", LocalDateTime.class)));
+	}
+
+	private TaxLine toTaxLine(ResultSet rs, int row) throws SQLException {
+		return new TaxLine(rs.getString("name"), Money.rate(rs.getBigDecimal("rate")), rs.getBigDecimal("amount"));
+	}
+
+	private FeeLine toFeeLine(ResultSet rs, int row) throws SQLException {
+		return new FeeLine(rs.getString("name"), rs.getBigDecimal("amount"));
 	}
 }

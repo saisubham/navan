@@ -14,20 +14,16 @@ import com.example.navan.common.Pagination;
 import com.example.navan.common.Pagination.Page;
 import com.example.navan.transaction.TransactionRequest.Create;
 import com.example.navan.transaction.TransactionRequest.Patch;
-import com.example.navan.transaction.TransactionValidator.Draft;
 
 @Service
 public class TransactionService {
 
 	private final TransactionRepository repository;
-	private final TransactionValidator validator;
 	private final MetadataCodec codec;
 	private final TransactionTemplate tx;
 
-	TransactionService(TransactionRepository repository, TransactionValidator validator, MetadataCodec codec,
-			TransactionTemplate tx) {
+	TransactionService(TransactionRepository repository, MetadataCodec codec, TransactionTemplate tx) {
 		this.repository = repository;
-		this.validator = validator;
 		this.codec = codec;
 		this.tx = tx;
 	}
@@ -38,14 +34,14 @@ public class TransactionService {
 	 * DuplicateKeyException, its transaction rolls back, and we answer 409 with the winner's id.
 	 */
 	public Transaction create(Create request) {
-		Draft draft = validator.validate(request);
-		repository.findIdByExternalId(draft.externalId()).ifPresent(this::duplicate);
+		TransactionMetadata metadata = codec.decode(request.type(), request.metadata());
+		repository.findIdByExternalId(request.externalId()).ifPresent(this::duplicate);
 		String id;
 		try {
-			id = tx.execute(_ -> repository.insert(draft));
+			id = tx.execute(_ -> repository.insert(request, metadata));
 		}
 		catch (DuplicateKeyException e) {
-			repository.findIdByExternalId(draft.externalId()).ifPresent(this::duplicate);
+			repository.findIdByExternalId(request.externalId()).ifPresent(this::duplicate);
 			throw e;
 		}
 		return get(id);
@@ -73,27 +69,23 @@ public class TransactionService {
 
 	/** Locks the row, refuses if billed, then replaces the supplied parts atomically. */
 	public Transaction patch(String id, Patch patch) {
-		if (patch == null) {
-			throw new ValidationException("request body is required");
-		}
 		tx.executeWithoutResult(status -> {
 			String type = repository.lockById(id)
 					.orElseThrow(() -> new NotFoundException("transaction " + id + " not found"));
 			assertNotInvoiced(id, "modified");
 			Transaction current = repository.findByIds(List.of(id)).getFirst();
 
-			if (patch.type() != null && !patch.type().equals(current.type())
+			if (patch.type() != null && !patch.type().value().equals(current.type())
 					|| patch.externalId() != null && !patch.externalId().equals(current.externalId())
 					|| patch.currency() != null && !patch.currency().equals(current.currency())) {
 				throw new ValidationException("type, external_id and currency cannot be changed");
 			}
-			var total = patch.total() == null ? current.total() : validator.total(patch.total());
-			var occurredAt = patch.occurredAt() == null ? current.occurredAt()
-					: Times.parse(patch.occurredAt(), "occurred_at");
-			var taxLines = patch.taxLines() == null ? null : validator.taxLines(patch.taxLines());
-			var feeLines = patch.feeLines() == null ? null : validator.feeLines(patch.feeLines());
+			var total = patch.total() == null ? current.total() : patch.total();
+			var occurredAt = patch.occurredAt() == null ? current.occurredAt() : patch.occurredAt();
+			var taxLines = patch.taxLines();
+			var feeLines = patch.feeLines();
 			TransactionMetadata metadata = patch.metadata() == null ? current.metadata()
-					: codec.decode(type, patch.metadata());
+					: codec.decode(TransactionType.fromValue(type), patch.metadata());
 
 			if (patch.total() == null && patch.occurredAt() == null && taxLines == null && feeLines == null
 					&& patch.metadata() == null) {

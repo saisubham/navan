@@ -4,8 +4,15 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
+import com.example.navan.common.Money;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 
 public record Transaction(
 		String id,
@@ -20,10 +27,23 @@ public record Transaction(
 		@JsonProperty("created_at") Instant createdAt,
 		@JsonProperty("updated_at") Instant updatedAt) {
 
+	/** Government/VAT-style line. Also the request shape, so the constraints live here once. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record TaxLine(String name, BigDecimal rate, BigDecimal amount) {
+	public record TaxLine(
+			@NotBlank String name,
+			@DecimalMin("0") @DecimalMax("1") BigDecimal rate,
+			@NotNull @PositiveOrZero BigDecimal amount) {
+
+		public TaxLine {
+			amount = Money.scale(amount);
+		}
 	}
 
-	public record FeeLine(String name, BigDecimal amount) {
+	/** Carrier/merchant fee line. Also the request shape. */
+	public record FeeLine(@NotBlank String name, @NotNull @PositiveOrZero BigDecimal amount) {
+
+		public FeeLine {
+			amount = Money.scale(amount);
+		}
 	}
 }

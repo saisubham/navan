@@ -2,12 +2,14 @@ package com.example.navan.web;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -22,6 +24,19 @@ class ApiExceptionHandler {
 	@ExceptionHandler(ValidationException.class)
 	ResponseEntity<Map<String, Object>> validation(ValidationException e) {
 		return body(HttpStatus.BAD_REQUEST, "validation_error", e.getMessage(), Map.of());
+	}
+
+	/** Bean Validation on request bodies; field names are reported in the API's snake_case. */
+	@ExceptionHandler(MethodArgumentNotValidException.class)
+	ResponseEntity<Map<String, Object>> invalidBody(MethodArgumentNotValidException e) {
+		String message = e.getBindingResult().getFieldErrors().stream()
+				.map(f -> snake(f.getField()) + " " + f.getDefaultMessage()).sorted().distinct()
+				.collect(Collectors.joining("; "));
+		return body(HttpStatus.BAD_REQUEST, "validation_error", message, Map.of());
+	}
+
+	private static String snake(String path) {
+		return path.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase();
 	}
 
 	@ExceptionHandler({ HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class })

@@ -187,4 +187,36 @@ class TransactionApiIT extends IntegrationTestBase {
 				.contains("metadata.address.city");
 		assertThat(count("transactions")).isZero();
 	}
+
+	@Test
+	void requestFieldErrorsAreReportedByName() {
+		ObjectNode bad = seed("flight");
+		bad.put("external_id", "");
+		bad.put("currency", "eur");
+		bad.put("total", -1);
+		((ObjectNode) bad.get("tax_lines").get(0)).put("name", " ");
+		((ObjectNode) bad.get("fee_lines").get(0)).put("amount", -5);
+		Resp r = post("/transactions", bad);
+		assertThat(r.status()).isEqualTo(400);
+		assertThat(r.body().get("error").asString()).isEqualTo("validation_error");
+		assertThat(r.body().get("message").asString()).contains("external_id", "currency", "total",
+				"tax_lines[0].name", "fee_lines[0].amount");
+
+		ObjectNode noOccurredAt = seed("flight");
+		noOccurredAt.remove("occurred_at");
+		assertThat(post("/transactions", noOccurredAt).body().get("message").asString()).contains("occurred_at");
+
+		ObjectNode badRate = seed("hotel");
+		((ObjectNode) badRate.get("tax_lines").get(0)).put("rate", 7);
+		assertThat(post("/transactions", badRate).body().get("message").asString()).contains("tax_lines[0].rate");
+
+		assertThat(post("/transactions", seed("flight").put("occurred_at", "yesterday")).status()).isEqualTo(400);
+		assertThat(post("/transactions", "").status()).isEqualTo(400);
+		assertThat(count("transactions")).isZero();
+
+		String id = createSeed("flight");
+		Resp patch = patch("/transactions/" + id, JSON.createObjectNode().put("total", -3));
+		assertThat(patch.status()).isEqualTo(400);
+		assertThat(patch.body().get("message").asString()).contains("total");
+	}
 }

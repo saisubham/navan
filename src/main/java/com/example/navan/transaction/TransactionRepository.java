@@ -34,12 +34,10 @@ public class TransactionRepository {
 
 	private final JdbcClient jdbc;
 	private final ObjectMapper json;
-	private final MetadataCodec metadata;
 
-	TransactionRepository(JdbcClient jdbc, ObjectMapper json, MetadataCodec metadata) {
+	TransactionRepository(JdbcClient jdbc, ObjectMapper json) {
 		this.jdbc = jdbc;
 		this.json = json;
-		this.metadata = metadata;
 	}
 
 	/** Throws DuplicateKeyException when external_id already exists. */
@@ -168,7 +166,7 @@ public class TransactionRepository {
 		return new Transaction(id, type, rs.getString("external_id"), rs.getString("currency"),
 				Times.instant(rs.getObject("occurred_at", LocalDateTime.class)), rs.getBigDecimal("total"),
 				taxes.getOrDefault(id, List.of()), fees.getOrDefault(id, List.of()),
-				metadata.fromStored(type, rs.getString("metadata")),
+				json.readValue(rs.getString("metadata"), TransactionType.fromValue(type).metadataType()),
 				Times.instant(rs.getObject("created_at", LocalDateTime.class)),
 				Times.instant(rs.getObject("updated_at", LocalDateTime.class)));
 	}

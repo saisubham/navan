@@ -7,7 +7,10 @@ plus corner cases. Each command is complete: copy it, run it, compare with **Exp
 - App: `http://localhost:8080` (`docker compose up --build`).
 - Start from an empty database, otherwise the fixed `external_id`s already exist and creates return 409:
   `docker compose down -v && docker compose up --build`.
-- `-i` prints the HTTP status line and headers. Add `| tail -n +1` or pipe the body to `jq` if you like.
+- `-i` prints the HTTP status line and headers. Every command in this file was run against a fresh
+  `docker compose up --build` stack and produced the status codes listed.
+- Validation messages for fields inside `metadata` use Java property names for a few fields (for example
+  `metadata.coupons[0].flightNumber`, `metadata.checkIn`).
 - Ids come back in responses (`txn_...`, `inv_...`). Where a command contains `<FLIGHT_ID>`, `<INVOICE_ID>` and so on,
   replace it with the id you got from the earlier step.
 

@@ -74,7 +74,7 @@ public abstract class IntegrationTestBase {
 		return send("DELETE", path, null);
 	}
 
-	private Resp send(String method, String path, Object body) {
+	protected Resp send(String method, String path, Object body) {
 		try {
 			HttpRequest.Builder b = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
 					.header("Content-Type", "application/json");

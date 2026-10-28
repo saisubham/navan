@@ -169,7 +169,7 @@ class TransactionApiIT extends IntegrationTestBase {
 		ObjectNode noFlightNumber = seed("flight");
 		((ObjectNode) noFlightNumber.get("metadata").get("coupons").get(0)).remove("flight_number");
 		assertThat(post("/transactions", noFlightNumber).body().get("message").asString())
-				.contains("metadata.coupons[0].flight_number");
+				.contains("metadata.coupons[0].flightNumber");
 
 		ObjectNode badKind = seed("trip_fee");
 		((ObjectNode) badKind.get("metadata")).put("fee_kind", "coffee_fee");

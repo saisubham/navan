@@ -10,10 +10,12 @@ import java.util.Map;
 import com.example.navan.common.Money;
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -65,11 +67,14 @@ public sealed interface TransactionMetadata {
 			@JsonAnySetter @JsonAnyGetter Map<String, Object> extra) implements TransactionMetadata {
 
 		public Hotel {
-			if (checkIn != null && checkOut != null && !checkOut.isAfter(checkIn)) {
-				throw new IllegalArgumentException("check_out must be after check_in");
-			}
 			roomRatePerNight = Money.scale(roomRatePerNight);
 			extra = extra == null ? new LinkedHashMap<>() : extra;
+		}
+
+		@JsonIgnore
+		@AssertTrue(message = "check_out must be after check_in")
+		public boolean isCheckOutAfterCheckIn() {
+			return checkIn == null || checkOut == null || checkOut.isAfter(checkIn);
 		}
 	}
 

@@ -18,6 +18,8 @@ import com.example.navan.invoice.Invoice.Request;
 import com.example.navan.invoice.Invoice.Summary;
 import com.example.navan.invoice.InvoiceService;
 
+import jakarta.validation.Valid;
+
 @RestController
 @RequestMapping("/invoices")
 class InvoiceController {
@@ -30,7 +32,7 @@ class InvoiceController {
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	Invoice create(@RequestBody Request request) {
+	Invoice create(@Valid @RequestBody Request request) {
 		return service.create(request);
 	}
 
@@ -46,7 +48,7 @@ class InvoiceController {
 	}
 
 	@PatchMapping("/{id}")
-	Invoice patch(@PathVariable String id, @RequestBody Request request) {
+	Invoice patch(@PathVariable String id, @Valid @RequestBody Request request) {
 		return service.replace(id, request);
 	}
 

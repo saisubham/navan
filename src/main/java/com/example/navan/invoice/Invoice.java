@@ -6,7 +6,13 @@ import java.util.List;
 
 import com.example.navan.transaction.Transaction.FeeLine;
 import com.example.navan.transaction.Transaction.TaxLine;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 import tools.jackson.databind.JsonNode;
 
@@ -41,8 +47,22 @@ public record Invoice(
 			@JsonProperty("created_at") Instant createdAt) {
 	}
 
+	/** Exactly one of {@code transaction_id} or {@code transaction_ids}; a repeated id is a 409 in the service. */
 	public record Request(
-			@JsonProperty("transaction_id") String transactionId,
-			@JsonProperty("transaction_ids") List<String> transactionIds) {
+			@Pattern(regexp = "\\S+", message = "must not be blank") @JsonProperty("transaction_id") String transactionId,
+			@Size(min = 1, max = MAX_TRANSACTIONS, message = "must contain between 1 and " + MAX_TRANSACTIONS + " ids")
+			@JsonProperty("transaction_ids") List<@NotBlank String> transactionIds) {
+
+		@JsonIgnore
+		@AssertTrue(message = "exactly one of transaction_id or transaction_ids is required")
+		public boolean isExactlyOneIdGiven() {
+			return (transactionId != null) != (transactionIds != null);
+		}
+
+		List<String> ids() {
+			return transactionId != null ? List.of(transactionId) : transactionIds;
+		}
 	}
+
+	public static final int MAX_TRANSACTIONS = 100;
 }

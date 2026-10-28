@@ -34,8 +34,14 @@ constraints (`@NotBlank`, `@Size`, `@Pattern`, `@PositiveOrZero`, `@Valid` on th
 one place. `type` is a `TransactionType` enum and `occurred_at` an `Instant`, so an unknown type or a bad
 timestamp is rejected by Jackson. Failures become a 400 `validation_error` naming the fields, e.g.
 `tax_lines[0].name must not be blank; total must be greater than or equal to 0`. PATCH uses the same
-constraints on whichever fields are supplied. Only the type-dependent `metadata` needs code (`MetadataCodec`),
-and money is rounded to scale 2 in the records' compact constructors.
+constraints on whichever fields are supplied. `Invoice.Request` works the same way (`@Size(1..100)`,
+`@NotBlank` ids, and an `@AssertTrue` for "exactly one of `transaction_id` / `transaction_ids`"); the one rule
+that needs the service is a repeated id, which is a 409. Only the type-dependent `metadata` needs code
+(`MetadataCodec`), and money is rounded to scale 2 in the records' compact constructors.
+
+Every error has the same body, `{"error","message"}`, including the ones Spring raises itself (unknown path 404,
+wrong method 405, wrong content type 415) and the 500 safety net; `ApiExceptionHandler` covers them and
+`ErrorShapeIT` asserts it.
 
 ## Money
 
@@ -62,14 +68,29 @@ are JSON, because they are written once and read back whole (the brief explicitl
 `type` is a sibling of `metadata` in the request, so there is no type tag inside metadata: `MetadataCodec` does
 a lookup on the transaction's `type` (the `TransactionType` enum maps each type to its record) and binds `metadata` to that record with Jackson. Validation is
 declarative (Bean Validation: `@NotBlank`, `@NotEmpty`, `@Valid`, `@PositiveOrZero`) and every failure is a 400
-naming the field, e.g. `metadata.coupons[0].flight_number must not be blank`. An unknown `type` or `fee_kind`
-is a 400. Records give typed `Instant` / `LocalDate` / `BigDecimal` (scaled to 2 in the compact constructor) and
-a `FeeKind` enum. Unrecognized keys are kept in an `extra` map and returned unchanged.
+naming the field, e.g. `metadata.coupons[0].flightNumber must not be blank` (Bean Validation reports the Java
+property name). An unknown `type` or `fee_kind` is a 400. Records give typed `Instant` / `LocalDate` /
+`BigDecimal` (scaled to 2 in the compact constructor) and a `FeeKind` enum.
+
+**Decision: unknown metadata keys are preserved.** Unrecognized keys inside `metadata` are kept in an `extra`
+map and returned unchanged, not rejected and not dropped. Carriers and hotels send fields we do not model
+(fare basis, loyalty ids); losing them on write would be silent data loss, and rejecting them would make the API
+brittle against upstream changes. The known fields are still strictly validated. The trade-off is that a typo in
+an optional field name is accepted as an extra key, which is why the fields that matter are required.
 
 GET returns coupons, the hotel address, rail legs and `fee_kind`, never an empty blob, and a flight cannot be
 stored as a hotel because the record is chosen by `type`. The record is serialized into the `metadata` JSON
 column on write and read back into the same record on read, so output order is the record's declared order.
-A field can still be made queryable later with a generated column over `JSON_EXTRACT(metadata, ...)`.
+`metadata` is never queried today, so it has no index. When a lookup such as "all flights from TXL" is needed,
+the field is promoted to a generated column and indexed, with no change to the stored JSON or the API:
+
+```sql
+ALTER TABLE transactions
+  ADD COLUMN origin VARCHAR(8) GENERATED ALWAYS AS (metadata->>'$.origin') VIRTUAL,
+  ADD INDEX idx_transactions_origin (type, origin);
+```
+
+(Not in `schema.sql` on purpose: no endpoint filters on it, and an unused index only slows every write.)
 
 Loading is batched: any number of transactions costs three queries (headers, tax lines, fee lines), so lists
 have no N+1.
@@ -137,9 +158,10 @@ tax and fee line tables. `SchemaIT` asserts these (and InnoDB, `DECIMAL(19,2)`) 
 
 `./mvnw test` runs everything against a real MySQL started by Testcontainers (same image tag as
 `docker-compose.yml`), through the real HTTP API: `TransactionApiIT`, `InvoiceApiIT`, `ConcurrencyIT`,
-`PaginationIT`, `SchemaIT`, plus pure unit tests for the snapshot builder and money scaling.
+`PaginationIT`, `SchemaIT`, `ErrorShapeIT`, plus pure unit tests for the snapshot builder and money scaling.
 
 ## Delivery
 
-`Dockerfile` (multi-stage JDK 25 build, JRE 25 runtime), `docker-compose.yml` (MySQL with healthcheck, app waits
-for it), GitHub Actions `ci.yml` (verify on every push/PR, publish to GHCR from `main` and tags).
+`Dockerfile` (multi-stage JDK 25 build, JRE 25 runtime), `docker-compose.yml` (MySQL with healthcheck, the app
+waits for it and has its own `/health` healthcheck), GitHub Actions `ci.yml` (verify on every push/PR; on every
+merge to `main` publish the image to GHCR and create the tag and GitHub release `v1.0.<run number>`).

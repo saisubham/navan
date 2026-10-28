@@ -1,6 +1,5 @@
 package com.example.navan.invoice;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -10,7 +9,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.example.navan.common.Exceptions.ConflictException;
 import com.example.navan.common.Exceptions.NotFoundException;
-import com.example.navan.common.Exceptions.ValidationException;
 import com.example.navan.common.Pagination;
 import com.example.navan.common.Pagination.Page;
 import com.example.navan.invoice.Invoice.Request;
@@ -21,8 +19,6 @@ import com.example.navan.transaction.TransactionRepository;
 
 @Service
 public class InvoiceService {
-
-	private static final int MAX_TRANSACTIONS = 100;
 
 	private final InvoiceRepository invoices;
 	private final TransactionRepository transactions;
@@ -86,27 +82,16 @@ public class InvoiceService {
 		return builder.build(loaded);
 	}
 
+	/** The request shape is already validated (Bean Validation); the one rule left is "never double count". */
 	private List<String> resolveIds(Request r) {
-		if (r == null || (r.transactionId() == null && r.transactionIds() == null)) {
-			throw new ValidationException("transaction_id or transaction_ids is required");
-		}
-		if (r.transactionId() != null && r.transactionIds() != null) {
-			throw new ValidationException("supply either transaction_id or transaction_ids, not both");
-		}
-		List<String> ids = r.transactionId() != null ? List.of(r.transactionId()) : r.transactionIds();
-		if (ids.isEmpty() || ids.size() > MAX_TRANSACTIONS) {
-			throw new ValidationException("between 1 and " + MAX_TRANSACTIONS + " transaction ids are required");
-		}
+		List<String> ids = r.ids();
 		Set<String> seen = new HashSet<>();
 		for (String id : ids) {
-			if (id == null || id.isBlank()) {
-				throw new ValidationException("transaction ids must be non-empty strings");
-			}
 			if (!seen.add(id)) {
 				throw new ConflictException("duplicate_transaction_id",
 						"transaction " + id + " is listed more than once on this invoice");
 			}
 		}
-		return new ArrayList<>(ids);
+		return ids;
 	}
 }

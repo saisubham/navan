@@ -24,7 +24,7 @@ this project, run `docker compose down -v` once so the current schema is created
 ```
 
 Needs Docker running: the integration tests start a real `mysql:26.10.0` through Testcontainers and
-call the real HTTP API on a random port (39 tests: transactions, invoices, concurrency, schema, pagination).
+call the real HTTP API on a random port (transactions, invoices, concurrency, schema, pagination, error shape).
 
 ## Requirements and caveats
 
@@ -37,8 +37,9 @@ call the real HTTP API on a random port (39 tests: transactions, invoices, concu
 
 ## CI / image
 
-`.github/workflows/ci.yml` runs `./mvnw verify` on every push and PR, and on pushes to `main` / `v*` tags
-publishes the image to GitHub Container Registry: `ghcr.io/<owner>/<repo>` (tags: branch, semver, sha, `latest`).
+`.github/workflows/ci.yml` runs `./mvnw verify` on every push and PR. Every merge to `main` also publishes the image
+to GitHub Container Registry, `ghcr.io/<owner>/<repo>` (tags: branch, sha, `latest`, `1.0.<run number>`), and creates
+the matching tag and GitHub release `v1.0.<run number>` with generated notes.
 
 ```bash
 docker run --rm -p 8080:8080 -e SPRING_DATASOURCE_URL=jdbc:mysql://host:3306/navan \

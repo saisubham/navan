@@ -4,10 +4,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponse;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,6 +23,8 @@ import com.example.navan.common.Exceptions.ValidationException;
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
 	@ExceptionHandler(ValidationException.class)
 	ResponseEntity<Map<String, Object>> validation(ValidationException e) {
@@ -60,12 +65,41 @@ class ApiExceptionHandler {
 		return body(HttpStatus.CONFLICT, "conflict", "concurrent modification, retry", Map.of());
 	}
 
-	private ResponseEntity<Map<String, Object>> body(HttpStatus status, String error, String message,
-			Map<String, Object> details) {
+	/**
+	 * Everything else. Spring's own web errors (unknown path 404, wrong method 405, wrong content type 415, ...)
+	 * implement {@link ErrorResponse} and keep their status; anything unexpected is a 500. Either way the body
+	 * has the same {"error","message"} shape as every other error.
+	 */
+	@ExceptionHandler(Exception.class)
+	ResponseEntity<Map<String, Object>> fallback(Exception e) {
+		if (e instanceof ErrorResponse er) {
+			HttpStatus status = HttpStatus.valueOf(er.getStatusCode().value());
+			String code = switch (status) {
+				case NOT_FOUND -> "not_found";
+				case METHOD_NOT_ALLOWED -> "method_not_allowed";
+				case UNSUPPORTED_MEDIA_TYPE -> "unsupported_media_type";
+				case NOT_ACCEPTABLE -> "not_acceptable";
+				default -> "bad_request";
+			};
+			String detail = er.getBody().getDetail();
+			ResponseEntity.BodyBuilder response = ResponseEntity.status(status);
+			er.getHeaders().forEach((name, values) -> response.header(name, values.toArray(String[]::new)));
+			return response.body(body(code, detail != null ? detail : status.getReasonPhrase(), Map.of()));
+		}
+		log.error("Unhandled exception", e);
+		return body(HttpStatus.INTERNAL_SERVER_ERROR, "internal_error", "unexpected error", Map.of());
+	}
+
+	private static Map<String, Object> body(String error, String message, Map<String, Object> details) {
 		Map<String, Object> b = new LinkedHashMap<>();
 		b.put("error", error);
 		b.put("message", message);
 		b.putAll(details);
-		return ResponseEntity.status(status).body(b);
+		return b;
+	}
+
+	private ResponseEntity<Map<String, Object>> body(HttpStatus status, String error, String message,
+			Map<String, Object> details) {
+		return ResponseEntity.status(status).body(body(error, message, details));
 	}
 }

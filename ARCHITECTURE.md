@@ -163,5 +163,5 @@ tax and fee line tables. `SchemaIT` asserts these (and InnoDB, `DECIMAL(19,2)`) 
 ## Delivery
 
 `Dockerfile` (multi-stage JDK 25 build, JRE 25 runtime), `docker-compose.yml` (MySQL with healthcheck, the app
-waits for it and has its own `/health` healthcheck), GitHub Actions `ci.yml` (verify on every push/PR; on every
+waits for it), GitHub Actions `ci.yml` (verify on every push/PR; on every
 merge to `main` publish the image to GHCR and create the tag and GitHub release `v1.0.<run number>`).
